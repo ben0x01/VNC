@@ -1,5 +1,4 @@
-﻿using System;
-using System.Drawing;
+﻿using System.Drawing;
 using System.Drawing.Imaging;
 using System.Net.Sockets;
 using System.Text;
@@ -16,53 +15,83 @@ class Program
     const int MOUSEEVENTF_LEFTDOWN = 0x02;
     const int MOUSEEVENTF_LEFTUP = 0x04;
 
-    static async Task Main(string[] args)
+    static async Task Main()
     {
         string serverUrl = "";
-        string tcpServerIp = "";
-        int tcpServerPort = ;
 
-        _ = Task.Run(() => ReceiveCoordinatesFromTCPServer(tcpServerIp, tcpServerPort));
+        TcpClient client = await ConnectToTcpSocket();
+        NetworkStream imageStream = await CreateImageStream(client);
+
+        _ = Task.Run(() => ReceiveCoordinatesFromTCPServer(client, imageStream));
 
         while (true)
         {
-            await CaptureAndSendScreenshot(serverUrl);
-            await Task.Delay(100);
+            await CaptureAndSendScreenshot(serverUrl, imageStream);
+            //await Task.Delay(10);
         }
     }
 
-    static async Task ReceiveCoordinatesFromTCPServer(string ip, int port)
+    static async Task<TcpClient> ConnectToTcpSocket()
+    {
+        string tcpServerIp = "";
+        int tcpServerPort = ;
+
+        try
+        {
+            TcpClient client = new TcpClient();
+            await client.ConnectAsync(tcpServerIp, tcpServerPort);
+
+            return client;
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Connection failed: {ex.Message}");
+
+            return null;
+        }
+    }
+
+    static async Task<NetworkStream> CreateImageStream(TcpClient client)
+    {
+        try
+        {
+            NetworkStream stream = client.GetStream();
+
+            return stream;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Failed creating a stream: ", ex);
+
+            client.Close();
+
+            return null;
+        }
+    }
+
+    static async Task ReceiveCoordinatesFromTCPServer(TcpClient client, NetworkStream stream)
     {
         try
         {
             while (true)
             {
-                using (TcpClient client = new TcpClient())
+                byte[] buffer = new byte[1024];
+                StringBuilder coordinates = new StringBuilder();
+
+                while (true)
                 {
-                    await client.ConnectAsync(ip, port);
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+                    if (bytesRead == 0)
+                        break;
+                    string cords = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+                    Console.WriteLine("Received coordinates: " + cords);
 
-                    using (NetworkStream stream = client.GetStream())
-                    {
-                        byte[] buffer = new byte[1024];
-                        StringBuilder coordinates = new StringBuilder();
+                    int[] cordArray = GetCoordArray(cords.Split(','));
 
-                        while (true)
-                        {
-                            int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                            if (bytesRead == 0)
-                                break;
-                            string coords = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-                            Console.WriteLine("Received coordinates: " + coords);
+                    SetCursorPos(cordArray[0], cordArray[1]);
 
-                            string[] coordArray = coords.Split(',');
-                            int x = int.Parse(coordArray[0]);
-                            int y = int.Parse(coordArray[1]);
-
-                            SetCursorPos(x, y);
-
-                            mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, x, y, 0, 0);
-                        }
-                    }
+                    mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, cordArray[0], cordArray[1], 0, 0);
                 }
             }
         }
@@ -72,15 +101,27 @@ class Program
         }
     }
 
-    static async Task CaptureAndSendScreenshot(string serverUrl)
+    static int[] GetCoordArray(string[] strCoordArray)
+    {
+        int decimalIndexX = strCoordArray[0].IndexOf('.');
+        int decimalIndexY = strCoordArray[1].IndexOf('.');
+
+        if (decimalIndexX < 0 && decimalIndexY < 0)
+            return new int[] { int.Parse(strCoordArray[0]), int.Parse(strCoordArray[1]) };
+
+        return new int[] { decimalIndexX > 0 ? int.Parse(strCoordArray[0].Substring(decimalIndexX)) : int.Parse(strCoordArray[0]),
+        decimalIndexY > 0 ? int.Parse(strCoordArray[1].Substring(decimalIndexY)) : int.Parse(strCoordArray[1])
+        };
+    }
+
+    static async Task CaptureAndSendScreenshot(string serverUrl, NetworkStream stream)
     {
         try
         {
             Bitmap screenshot = CaptureScreen();
             byte[] screenshotBytes = GetBytesFromImage(screenshot);
-            string screenshotString = Convert.ToBase64String(screenshotBytes);
 
-            await SendBase64ToServer(screenshotString, serverUrl);
+            await SendBytesToServer(screenshotBytes, serverUrl, stream);
 
             //Console.WriteLine("Screenshot sent successfully!");
         }
@@ -101,32 +142,19 @@ class Program
 
     static Bitmap CaptureScreen()
     {
-        //Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
-        Bitmap screenshot = new Bitmap(1280, 768, PixelFormat.Format32bppArgb);
+        Bitmap screenshot = new Bitmap(1920, 1080, PixelFormat.Format32bppArgb);
 
         using (Graphics graphics = Graphics.FromImage(screenshot))
-            graphics.CopyFromScreen(0, 0, 0, 0, new Size(1280, 768), CopyPixelOperation.SourceCopy);
+            graphics.CopyFromScreen(0, 0, 0, 0, new Size(1920, 1080), CopyPixelOperation.SourceCopy);
 
         return screenshot;
     }
 
-    static async Task SendBase64ToServer(string base64Data, string serverUrl)
+    static async Task SendBytesToServer(byte[] bytesImage, string serverUrl, NetworkStream stream)
     {
         try
         {
-            string apiUrl = $"{serverUrl}/upload_screenshot";
-
-            var payload = new { screenshot = base64Data };
-            string jsonPayload = Newtonsoft.Json.JsonConvert.SerializeObject(payload);
-            StringContent content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-
-            using (HttpClient client = new HttpClient())
-            {
-                HttpResponseMessage response = await client.PostAsync(apiUrl, content);
-
-                if (!response.IsSuccessStatusCode)
-                    throw new Exception($"Failed to send screenshot to server. Status code: {response.StatusCode}");
-            }
+            await stream.WriteAsync(bytesImage, 0, bytesImage.Length);
         }
         catch (Exception ex)
         {
