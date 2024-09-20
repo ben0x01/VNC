@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "qxwA27La2NVCNAWydC1YvFF+FHYfUuKl4dyfOQbl3w47LCOCM8jdEWsMTIx/swnIvzOvWRkypK6gijjdyhaakw==",
+  "success": true,
+  "projectFilePath": "D:\\projects\\vnc\\vnc\\vnc.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\glazy\\.nuget\\packages\\microsoft.win32.systemevents\\8.0.0\\microsoft.win32.systemevents.8.0.0.nupkg.sha512",
+    "C:\\Users\\glazy\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
+    "C:\\Users\\glazy\\.nuget\\packages\\system.drawing.common\\8.0.8\\system.drawing.common.8.0.8.nupkg.sha512"
+  ],
+  "logs": []
+}
