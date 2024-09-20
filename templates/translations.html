@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translations</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.3.1/socket.io.js"></script>
+</head>
+<body>
+    <div id="image-container" style="background-color: #ccc;">Click here</div>
+
+    <script>
+        const socket = io();
+
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+
+        socket.on("screenshot_received", function(data) {
+            const imageContainer = document.getElementById('image-container');
+            const img = new Image();
+            img.src = 'data:image/jpeg;base64,' + data.screenshot;
+            imageContainer.innerHTML = '';
+            imageContainer.appendChild(img);
+        });
+
+        document.getElementById('image-container').addEventListener('click', function(event) {
+            const imageContainer = document.getElementById('image-container');
+            const rect = imageContainer.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+            console.log('Relative Coordinates - X:', offsetX, 'Y:', offsetY);
+            socket.emit('click_coordinates', {'x': offsetX, 'y': offsetY});
+        });
+    </script>
+</body>
+</html>
